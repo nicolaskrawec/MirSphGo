@@ -27,13 +27,13 @@ jobs:
             output: MirSphGo-windows-amd64.exe
 
           - name: macos-amd64
-            os: macos-latest
+            os: macos-15-intel
             goos: darwin
             goarch: amd64
             output: MirSphGo-darwin-amd64
 
           - name: macos-arm64
-            os: macos-latest
+            os: macos-15
             goos: darwin
             goarch: arm64
             output: MirSphGo-darwin-arm64
