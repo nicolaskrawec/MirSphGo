@@ -6,7 +6,9 @@ import (
 	"math"
 
 	"fmt"
+	"math/rand"
 	"sync"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -65,6 +67,7 @@ type Game struct {
 	camPitch      float64
 	prevMouseX    int
 	prevMouseY    int
+	scene         Scene
 }
 
 func (g *Game) Update() error {
@@ -127,13 +130,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	aspectRatio := float64(g.width) / float64(g.height)
 	scale := math.Tan(fov / 2)
 
-	scene := Scene{
-		Spheres: []Sphere{
-			{Center: Vec3{0, 2, 4}, Radius: 1.0, Color: color.RGBA{255, 255, 255, 255}, Reflectivity: 0.2},
-			{Center: Vec3{-2.5, 1.5, 5}, Radius: 0.5, Color: color.RGBA{255, 0, 0, 255}, Reflectivity: 0.2},
-			{Center: Vec3{2.5, 2.5, 5}, Radius: 0.5, Color: color.RGBA{0, 255, 0, 255}, Reflectivity: 0.2},
-		},
-	}
+	scene := g.scene
 
 	cosYaw := math.Cos(g.camYaw)
 	sinYaw := math.Sin(g.camYaw)
@@ -329,13 +326,38 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func main() {
-	w, h := 640, 480
+	rand.Seed(time.Now().UnixNano())
+
+	w, h := 1024, 768
 	ebiten.SetWindowSize(w, h)
 	ebiten.SetWindowTitle("Simple Ray Tracer")
+
+	spheres := make([]Sphere, 10)
+	for i := 0; i < 10; i++ {
+		spheres[i] = Sphere{
+			Center: Vec3{
+				X: rand.Float64()*6 - 3, // -3 to 3
+				Y: rand.Float64()*1 + 1, // 1 to 2
+				Z: rand.Float64()*4 + 2, // 2 to 6
+			},
+			Radius: rand.Float64()*0.4 + 0.1,
+			Color: color.RGBA{
+				R: uint8(rand.Intn(256)),
+				G: uint8(rand.Intn(256)),
+				B: uint8(rand.Intn(256)),
+				A: 255,
+			},
+			Reflectivity: rand.Float64()*0.8 + 0.1,
+		}
+	}
+
 	game := &Game{
 		width:  w,
 		height: h,
 		camPos: Vec3{0, 1.7, 0},
+		scene: Scene{
+			Spheres: spheres,
+		},
 	}
 	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
