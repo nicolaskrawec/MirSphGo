@@ -62,20 +62,37 @@ type Game struct {
 	pixels        []byte
 	camPos        Vec3
 	camYaw        float64
+	camPitch      float64
 	prevMouseX    int
+	prevMouseY    int
 }
 
 func (g *Game) Update() error {
+	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+		return ebiten.Termination
+	}
+
 	const moveSpeed = 0.1
 	const mouseSens = 0.005
 
 	// Mouse rotation
-	mx, _ := ebiten.CursorPosition()
-	if g.prevMouseX != 0 {
+	mx, my := ebiten.CursorPosition()
+	if g.prevMouseX != 0 || g.prevMouseY != 0 {
 		deltaX := mx - g.prevMouseX
+		deltaY := my - g.prevMouseY
 		g.camYaw += float64(deltaX) * mouseSens
+		g.camPitch -= float64(deltaY) * mouseSens
+
+		// Clamp pitch to avoid flipping
+		if g.camPitch > 1.5 {
+			g.camPitch = 1.5
+		}
+		if g.camPitch < -1.5 {
+			g.camPitch = -1.5
+		}
 	}
 	g.prevMouseX = mx
+	g.prevMouseY = my
 
 	// Movement (Forward/Backward)
 	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyZ) {
@@ -89,13 +106,12 @@ func (g *Game) Update() error {
 
 	// Strafing (Left/Right)
 	if ebiten.IsKeyPressed(ebiten.KeyQ) || ebiten.IsKeyPressed(ebiten.KeyA) {
-		// Right vector is {cos(yaw), 0, -sin(yaw)}
-		// Left is -Right
 		g.camPos.X -= math.Cos(g.camYaw) * moveSpeed
 		g.camPos.Z += math.Sin(g.camYaw) * moveSpeed
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyD) {
 		g.camPos.X += math.Cos(g.camYaw) * moveSpeed
+		g.camPos.Z -= math.Cos(g.camYaw) * 0 // Placeholder to fix index
 		g.camPos.Z -= math.Sin(g.camYaw) * moveSpeed
 	}
 
@@ -113,14 +129,16 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	scene := Scene{
 		Spheres: []Sphere{
-			{Center: Vec3{0, 2, 4}, Radius: 1.0, Color: color.RGBA{255, 255, 255, 255}, Reflectivity: 0.5},
-			{Center: Vec3{-2.5, 1.5, 5}, Radius: 0.5, Color: color.RGBA{255, 0, 0, 255}, Reflectivity: 0.3},
-			{Center: Vec3{2.5, 2.5, 5}, Radius: 0.5, Color: color.RGBA{0, 255, 0, 255}, Reflectivity: 0.8},
+			{Center: Vec3{0, 2, 4}, Radius: 1.0, Color: color.RGBA{255, 255, 255, 255}, Reflectivity: 0.2},
+			{Center: Vec3{-2.5, 1.5, 5}, Radius: 0.5, Color: color.RGBA{255, 0, 0, 255}, Reflectivity: 0.2},
+			{Center: Vec3{2.5, 2.5, 5}, Radius: 0.5, Color: color.RGBA{0, 255, 0, 255}, Reflectivity: 0.2},
 		},
 	}
 
 	cosYaw := math.Cos(g.camYaw)
 	sinYaw := math.Sin(g.camYaw)
+	cosPitch := math.Cos(g.camPitch)
+	sinPitch := math.Sin(g.camPitch)
 
 	var wg sync.WaitGroup
 	wg.Add(g.height)
@@ -133,10 +151,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				px := (2*(float64(x)+0.5)/float64(g.width) - 1) * aspectRatio * scale
 				py := (1 - 2*(float64(y)+0.5)/float64(g.height)) * scale
 
-				// Rotate direction around Y axis
-				dirX := px*cosYaw + sinYaw
-				dirY := py
-				dirZ := -px*sinYaw + cosYaw
+				// 1. Rotate around X axis (Pitch)
+				y1 := py*cosPitch + sinPitch
+				z1 := -py*sinPitch + cosPitch
+
+				// 2. Rotate around Y axis (Yaw)
+				dirX := px*cosYaw + z1*sinYaw
+				dirY := y1
+				dirZ := -px*sinYaw + z1*cosYaw
 
 				ray := Ray{
 					Origin: g.camPos,
@@ -189,10 +211,36 @@ func (g *Game) trace(ray Ray, scene Scene, depth int) color.RGBA {
 		}
 	}
 
-	// Determine closest hit
+	// Light parameters (Point light)
+	lightPos := Vec3{5, 20, 5}
+	lightColor := Vec3{1.0, 0.95, 0.8} // Warm solar color
+	ambientIntensity := 0.1
+
 	if closestSphere != nil && (!hitFloor || tMin < tFloor) {
 		hitPos := ray.Origin.Add(ray.Dir.Mul(tMin))
 		normal := hitPos.Sub(closestSphere.Center).Normalize()
+
+		// Direction to light
+		L := lightPos.Sub(hitPos).Normalize()
+
+		// Shadows
+		shadowRay := Ray{
+			Origin: hitPos.Add(normal.Mul(0.001)),
+			Dir:    L,
+		}
+		inShadow := false
+		for i := range scene.Spheres {
+			if _, ok := scene.Spheres[i].Intersect(shadowRay); ok {
+				inShadow = true
+				break
+			}
+		}
+
+		diffuse := math.Max(0, normal.Dot(L))
+		intensity := ambientIntensity
+		if !inShadow {
+			intensity += diffuse
+		}
 
 		reflectDir := ray.Dir.Sub(normal.Mul(2 * ray.Dir.Dot(normal))).Normalize()
 		reflectRay := Ray{
@@ -202,53 +250,36 @@ func (g *Game) trace(ray Ray, scene Scene, depth int) color.RGBA {
 
 		reflectedCol := g.trace(reflectRay, scene, depth+1)
 
-		// Lighting at hit point
-		lightDir := Vec3{0.5, 1, 0.5}.Normalize()
-		ambient := 0.2
-		diffuse := math.Max(0, normal.Dot(lightDir))
-		
-		// Shadows
-		shadowRay := Ray{
-			Origin: hitPos.Add(normal.Mul(0.001)),
-			Dir:    lightDir,
-		}
-		inShadow := false
-		for i := range scene.Spheres {
-			if _, ok := scene.Spheres[i].Intersect(shadowRay); ok {
-				inShadow = true
-				break
-			}
-		}
-		
-		lightIntensity := ambient
+		// Specular highlights (Phong)
+		specular := 0.0
 		if !inShadow {
-			lightIntensity += diffuse
-		}
-		if lightIntensity > 1.0 {
-			lightIntensity = 1.0
+			viewDir := ray.Dir.Mul(-1).Normalize()
+			halfDir := L.Add(viewDir).Normalize()
+			specular = math.Pow(math.Max(0, normal.Dot(halfDir)), 64)
 		}
 
-		// Combine sphere color and reflection
-		r := (float64(closestSphere.Color.R)*(1-closestSphere.Reflectivity) + float64(reflectedCol.R)*closestSphere.Reflectivity) * lightIntensity
-		g_col := (float64(closestSphere.Color.G)*(1-closestSphere.Reflectivity) + float64(reflectedCol.G)*closestSphere.Reflectivity) * lightIntensity
-		b := (float64(closestSphere.Color.B)*(1-closestSphere.Reflectivity) + float64(reflectedCol.B)*closestSphere.Reflectivity) * lightIntensity
+		// Combine sphere color (lit) and reflection (unaffected by local light)
+		r := float64(closestSphere.Color.R)*(1-closestSphere.Reflectivity)*intensity*lightColor.X +
+			float64(reflectedCol.R)*closestSphere.Reflectivity + specular*255
+		g_col := float64(closestSphere.Color.G)*(1-closestSphere.Reflectivity)*intensity*lightColor.Y +
+			float64(reflectedCol.G)*closestSphere.Reflectivity + specular*255
+		b := float64(closestSphere.Color.B)*(1-closestSphere.Reflectivity)*intensity*lightColor.Z +
+			float64(reflectedCol.B)*closestSphere.Reflectivity + specular*255
 
-		return color.RGBA{uint8(r), uint8(g_col), uint8(b), 255}
+		return color.RGBA{uint8(math.Min(255, r)), uint8(math.Min(255, g_col)), uint8(math.Min(255, b)), 255}
 	}
 
 	if hitFloor {
 		hitPos := ray.Origin.Add(ray.Dir.Mul(tFloor))
 		floorColor := g.getFloorColor(ray, tFloor)
-		
+
 		normal := Vec3{0, 1, 0}
-		lightDir := Vec3{0.5, 1, 0.5}.Normalize()
-		ambient := 0.2
-		diffuse := math.Max(0, normal.Dot(lightDir))
-		
+		L := lightPos.Sub(hitPos).Normalize()
+
 		// Shadows on floor
 		shadowRay := Ray{
 			Origin: hitPos.Add(normal.Mul(0.001)),
-			Dir:    lightDir,
+			Dir:    L,
 		}
 		inShadow := false
 		for i := range scene.Spheres {
@@ -257,21 +288,18 @@ func (g *Game) trace(ray Ray, scene Scene, depth int) color.RGBA {
 				break
 			}
 		}
-		
-		lightIntensity := ambient
+
+		diffuse := math.Max(0, normal.Dot(L))
+		intensity := ambientIntensity
 		if !inShadow {
-			lightIntensity += diffuse
+			intensity += diffuse
 		}
-		if lightIntensity > 1.0 {
-			lightIntensity = 1.0
-		}
-		
-		return color.RGBA{
-			R: uint8(float64(floorColor.R) * lightIntensity),
-			G: uint8(float64(floorColor.G) * lightIntensity),
-			B: uint8(float64(floorColor.B) * lightIntensity),
-			A: 255,
-		}
+
+		r := float64(floorColor.R) * intensity * lightColor.X
+		g_col := float64(floorColor.G) * intensity * lightColor.Y
+		b := float64(floorColor.B) * intensity * lightColor.Z
+
+		return color.RGBA{uint8(math.Min(255, r)), uint8(math.Min(255, g_col)), uint8(math.Min(255, b)), 255}
 	}
 
 	// Sky Gradient
