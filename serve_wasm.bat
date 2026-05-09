@@ -1,0 +1,3 @@
+@echo off
+echo Lancement du serveur Go pour le WASM...
+go run server/main.go

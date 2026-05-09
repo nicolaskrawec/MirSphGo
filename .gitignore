@@ -1,0 +1,33 @@
+# Binaires et exécutables
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+MirSphGo
+MirSphGo.exe
+
+# WebAssembly
+main.wasm
+
+# Fichiers de test
+*.test
+
+# Sorties de profilage
+*.prof
+
+# Dépendances (si vous utilisez vendor, ne l'ignorez pas, sinon :)
+# vendor/
+
+# IDE / Editeurs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Fichiers temporaires
+*.log
