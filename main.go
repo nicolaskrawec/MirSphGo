@@ -11,7 +11,7 @@ import (
 
 const (
 	Epsilon  = 0.001 // Petite valeur pour éviter les erreurs de précision et l'auto-intersection
-	MaxDepth = 4     // Nombre maximum de rebonds pour la réflexion
+	MaxDepth = 2     // Nombre maximum de rebonds pour la réflexion
 )
 
 func main() {
@@ -99,7 +99,7 @@ func createScene() Scene {
 	})
 
 	// Génération de petites sphères orbitales
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 4; i++ {
 		radius := rand.Float64()*0.35 + 0.15
 
 		sphere := Sphere{
