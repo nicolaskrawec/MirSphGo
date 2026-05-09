@@ -9,6 +9,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 // Game implémente l'interface ebiten.Game.
@@ -27,6 +28,10 @@ type Game struct {
 	hasMouse   bool
 
 	scene Scene // La scène à rendre
+	
+	paused       bool    // État de pause
+	animTime     float64 // Temps cumulé pour l'animation
+	lastRealTime float64 // Dernier temps réel enregistré
 }
 
 // Update met à jour l'état du jeu (entrées clavier/souris, animations).
@@ -41,6 +46,11 @@ func (g *Game) Update() error {
 		g.camPos = V3(0, 1.7, -2)
 		g.camYaw = 0
 		g.camPitch = 0
+	}
+	
+	// Régénérer la scène si la touche N est pressée
+	if inpututil.IsKeyJustPressed(ebiten.KeyN) {
+		g.scene = createScene()
 	}
 
 	const moveSpeed = 0.1
@@ -93,10 +103,24 @@ func (g *Game) Update() error {
 		g.camPos = g.camPos.Sub(right.Mul(moveSpeed))
 	}
 
-	// Mise à jour des animations de la scène
-	t := float64(time.Now().UnixNano()) / 1e9
-	for i := range g.scene.Spheres {
-		g.scene.Spheres[i].UpdateAnimation(t)
+	// Gestion du temps pour l'animation (indépendant du temps réel si mis en pause)
+	now := float64(time.Now().UnixNano()) / 1e9
+	if g.lastRealTime == 0 {
+		g.lastRealTime = now
+	}
+	dt := now - g.lastRealTime
+	g.lastRealTime = now
+
+	// Toggle pause avec la touche P ou Espace
+	if inpututil.IsKeyJustPressed(ebiten.KeyP) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		g.paused = !g.paused
+	}
+
+	if !g.paused {
+		g.animTime += dt
+		for i := range g.scene.Spheres {
+			g.scene.Spheres[i].UpdateAnimation(g.animTime)
+		}
 	}
 
 	return nil
@@ -116,16 +140,22 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	// Afficher des informations de débogage
 	objectCount := len(g.scene.Spheres) + len(g.scene.Planes)
+	status := "Running"
+	if g.paused {
+		status = "PAUSED"
+	}
+
 	ebitenutil.DebugPrint(
 		screen,
 		fmt.Sprintf(
-			"FPS: %.2f\nRender: %dx%d\nSpheres: %d\nPlanes: %d\nObjects: %d",
+			"FPS: %.2f\nRender: %dx%d\nSpheres: %d\nPlanes: %d\nObjects: %d\nStatus: %s\n[N] New Scene [P] Pause",
 			ebiten.ActualFPS(),
 			g.width,
 			g.height,
 			len(g.scene.Spheres),
 			len(g.scene.Planes),
 			objectCount,
+			status,
 		),
 	)
 }
@@ -256,7 +286,56 @@ func (g *Game) trace(ray Ray, depth int) Vec3 {
 
 	localColor := ambient.Add(diffuse).Add(specular)
 
-	// Gestion des réflexions (récursion)
+	// Gestion de la réfraction et transparence
+	if material.Transparency > 0 && depth < MaxDepth {
+		outNormal := hit.Normal
+		refIdx := material.RefractionIndex
+		if refIdx <= 0 {
+			refIdx = 1.0
+		}
+		refRatio := 1.0 / refIdx
+		if ray.Dir.Dot(hit.Normal) > 0 {
+			outNormal = hit.Normal.Mul(-1)
+			refRatio = refIdx
+		}
+
+		cosTheta := math.Min(ray.Dir.Mul(-1).Dot(outNormal), 1.0)
+		reflectance := Schlick(cosTheta, refRatio)
+		// On prend le maximum entre la réflexion spéculaire (miroir) et l'effet Fresnel
+		actualReflectance := math.Max(reflectance, material.Reflectivity)
+
+		// Calcul de la réflexion
+		reflectDir := ray.Dir.Reflect(outNormal).Normalize()
+		reflectRay := Ray{
+			Origin: hit.Position.Add(outNormal.Mul(Epsilon)),
+			Dir:    reflectDir,
+		}
+		reflectedColor := g.trace(reflectRay, depth+1)
+
+		// Calcul de la réfraction
+		refractedColor := V3(0, 0, 0)
+		refractDir, canRefract := ray.Dir.Refract(outNormal, refRatio)
+		if canRefract {
+			refractRay := Ray{
+				Origin: hit.Position.Sub(outNormal.Mul(Epsilon)),
+				Dir:    refractDir.Normalize(),
+			}
+			refractedColor = g.trace(refractRay, depth+1)
+		} else {
+			// Réflexion totale interne
+			actualReflectance = 1.0
+		}
+
+		// Mélange entre réflexion et réfraction
+		transmissionColor := reflectedColor.Mul(actualReflectance).
+			Add(refractedColor.Mul(1 - actualReflectance))
+
+		// On mélange la couleur de l'objet (opacité) avec la couleur transmise
+		return localColor.Mul(1 - material.Transparency).
+			Add(transmissionColor.Mul(material.Transparency))
+	}
+
+	// Gestion des réflexions (récursion classique pour métaux/miroirs)
 	if material.Reflectivity <= 0.01 || depth >= MaxDepth {
 		return localColor
 	}

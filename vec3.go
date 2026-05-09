@@ -61,6 +61,25 @@ func (v Vec3) Reflect(normal Vec3) Vec3 {
 	return v.Sub(normal.Mul(2 * v.Dot(normal)))
 }
 
+// Refract calcule le vecteur de réfraction selon la loi de Snell-Descartes.
+func (v Vec3) Refract(n Vec3, etaiOverEtat float64) (Vec3, bool) {
+	cosTheta := math.Min(v.Mul(-1).Dot(n), 1.0)
+	rOutPerp := v.Add(n.Mul(cosTheta)).Mul(etaiOverEtat)
+	discriminant := 1.0 - rOutPerp.Dot(rOutPerp)
+	if discriminant < 0 {
+		return Vec3{}, false // Réflexion totale interne
+	}
+	rOutParallel := n.Mul(-math.Sqrt(math.Abs(discriminant)))
+	return rOutPerp.Add(rOutParallel), true
+}
+
+// Schlick calcule l'approximation de Schlick pour le coefficient de réflexion.
+func Schlick(cosine, refIdx float64) float64 {
+	r0 := (1 - refIdx) / (1 + refIdx)
+	r0 = r0 * r0
+	return r0 + (1-r0)*math.Pow((1-cosine), 5)
+}
+
 // Lerp effectue une interpolation linéaire entre les vecteurs 'a' et 'b'.
 func Lerp(a, b Vec3, t float64) Vec3 {
 	return a.Mul(1 - t).Add(b.Mul(t))
