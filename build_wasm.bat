@@ -2,5 +2,5 @@
 echo Building for WebAssembly...
 set GOOS=js
 set GOARCH=wasm
-go build -o main.wasm .
-echo Done. Created main.wasm
+go build -o dist/main.wasm .
+echo Done. Created dist/main.wasm

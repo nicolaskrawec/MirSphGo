@@ -8,7 +8,7 @@ MirSphGo
 MirSphGo.exe
 
 # WebAssembly
-main.wasm
+dist/main.wasm
 
 # Fichiers de test
 *.test

@@ -11,7 +11,7 @@ func main() {
 	fmt.Printf("Serveur démarré sur http://localhost:%s\n", port)
 	
 	// Sert les fichiers du répertoire parent (la racine du projet)
-	fs := http.FileServer(http.Dir("."))
+	fs := http.FileServer(http.Dir("dist"))
 	
 	// On utilise un handler personnalisé pour s'assurer que le type MIME du WASM est correct
 	// (certains navigateurs sont capricieux)
