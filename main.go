@@ -16,7 +16,7 @@ import (
 
 const (
 	Epsilon  = 0.001
-	MaxDepth = 8
+	MaxDepth = 4
 )
 
 // =====================
