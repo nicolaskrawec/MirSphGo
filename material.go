@@ -17,6 +17,9 @@ type Material struct {
 	Specular  float64 // Intensité du reflet spéculaire
 	Shininess float64 // Brillance (plus c'est élevé, plus le reflet est petit)
 
+	Transparency    float64 // Coefficient de transparence (0 à 1)
+	RefractionIndex float64 // Indice de réfraction (ex: 1.5 pour le verre)
+
 	Checker *CheckerPattern // Optionnel : motif en damier
 }
 

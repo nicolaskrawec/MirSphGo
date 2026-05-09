@@ -11,7 +11,7 @@ import (
 
 const (
 	Epsilon  = 0.001 // Petite valeur pour éviter les erreurs de précision et l'auto-intersection
-	MaxDepth = 2     // Nombre maximum de rebonds pour la réflexion
+	MaxDepth = 4     // Nombre maximum de rebonds pour la réflexion
 )
 
 func main() {
@@ -46,15 +46,24 @@ func main() {
 
 // randomMaterial génère un matériau avec des propriétés aléatoires.
 func randomMaterial() Material {
+	transparency := 0.0
+	refIdx := 1.0
+	// if rand.Float64() > 0.8 {
+	// 	transparency = 0 // 0.6 + rand.Float64()*0.4
+	// 	refIdx = 1 // 1.3 + rand.Float64()*0.4
+	// }
+
 	return Material{
 		Albedo: V3(
 			rand.Float64()*0.8+0.2,
 			rand.Float64()*0.8+0.2,
 			rand.Float64()*0.8+0.2,
 		),
-		Reflectivity: 0.2 + rand.Float64()*0.35,
-		Specular:     rand.Float64() * 0.7,
-		Shininess:    16 + rand.Float64()*80,
+		Reflectivity:    0.2 + rand.Float64()*0.35,
+		Specular:        rand.Float64() * 0.7,
+		Shininess:       16 + rand.Float64()*80,
+		Transparency:    transparency,
+		RefractionIndex: refIdx,
 	}
 }
 
@@ -85,18 +94,33 @@ func createScene() Scene {
 	// Liste des sphères
 	spheres := make([]Sphere, 0, 11)
 
-	// Sphère centrale rouge
+	// Sphère centrale
 	centralPosition := V3(0, 1.5, 4)
 	spheres = append(spheres, Sphere{
 		Center: centralPosition,
 		Radius: 1,
 		Material: Material{
-			Albedo:       V3(0.9, 0.12, 0.08),
-			Reflectivity: 0.8, //0.22,
-			Specular:     5,
-			Shininess:    90,
+			Albedo:          V3(1.0, 0.75, 0.1), // Jaune/Or
+			Reflectivity:    0.05,               //0.22,
+			Specular:        5,
+			Shininess:       90,
+			RefractionIndex: 1.05,
+			Transparency:    0.8,
 		},
 	})
+
+	// Sphère de verre (transparente)
+	// spheres = append(spheres, Sphere{
+	// 	Center: V3(2, 1, 3),
+	// 	Radius: 0.8,
+	// 	Material: Material{
+	// 		Albedo:          V3(1, 1, 1),
+	// 		Transparency:    0.95,
+	// 		RefractionIndex: 1.5,
+	// 		Specular:        1.0,
+	// 		Shininess:       100,
+	// 	},
+	// })
 
 	// Génération de petites sphères orbitales
 	for i := 0; i < 4; i++ {
