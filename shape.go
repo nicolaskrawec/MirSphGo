@@ -2,27 +2,27 @@ package main
 
 import "math"
 
-// =====================
-// Sphere
-// =====================
-
+// Sphere représente un objet sphérique dans la scène.
 type Sphere struct {
 	Center   Vec3
 	Radius   float64
 	Material Material
 
-	// Animation orbitale optionnelle
-	Orbiting    bool
-	OrbitCenter Vec3
-	OrbitRadius float64
-	OrbitSpeed  float64
-	OrbitPhase  float64
-	OrbitHeight float64
+	// Propriétés pour l'animation orbitale
+	Orbiting    bool    // Si vrai, la sphère tourne autour d'un centre
+	OrbitCenter Vec3    // Point central de l'orbite
+	OrbitRadius float64 // Rayon de l'orbite
+	OrbitSpeed  float64 // Vitesse de rotation
+	OrbitPhase  float64 // Déphasage initial (en radians)
+	OrbitHeight float64 // Hauteur constante ou décalage en Y
 }
 
+// Intersect calcule l'intersection entre un rayon et la sphère.
+// Retourne un HitRecord et vrai si le rayon touche la sphère dans l'intervalle [tMin, tMax].
 func (s *Sphere) Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool) {
 	oc := ray.Origin.Sub(s.Center)
 
+	// Équation quadratique : a*t^2 + b*t + c = 0
 	a := ray.Dir.Dot(ray.Dir)
 	halfB := oc.Dot(ray.Dir)
 	c := oc.Dot(oc) - s.Radius*s.Radius
@@ -34,6 +34,7 @@ func (s *Sphere) Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool) {
 
 	sqrtD := math.Sqrt(discriminant)
 
+	// Trouve la racine la plus proche qui est dans l'intervalle acceptable
 	t := (-halfB - sqrtD) / a
 	if t < tMin || t > tMax {
 		t = (-halfB + sqrtD) / a
@@ -53,8 +54,8 @@ func (s *Sphere) Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool) {
 	}, true
 }
 
-// Méthode spécialisée pour les ombres.
-// Elle évite de construire un HitRecord complet.
+// IntersectAny est une version optimisée d'Intersect pour les tests d'ombre.
+// Retourne vrai dès qu'une intersection est trouvée dans l'intervalle.
 func (s *Sphere) IntersectAny(ray Ray, tMin, tMax float64) bool {
 	oc := ray.Origin.Sub(s.Center)
 
@@ -78,6 +79,7 @@ func (s *Sphere) IntersectAny(ray Ray, tMin, tMax float64) bool {
 	return t >= tMin && t <= tMax
 }
 
+// UpdateAnimation met à jour la position de la sphère en fonction du temps 't'.
 func (s *Sphere) UpdateAnimation(t float64) {
 	if !s.Orbiting {
 		return
@@ -90,20 +92,19 @@ func (s *Sphere) UpdateAnimation(t float64) {
 	s.Center.Y = s.OrbitCenter.Y + s.OrbitHeight
 }
 
-// =====================
-// Plane
-// =====================
-
+// Plane représente un plan infini défini par un point et une normale.
 type Plane struct {
 	Point    Vec3
 	Normal   Vec3
 	Material Material
 }
 
+// Intersect calcule l'intersection entre un rayon et le plan.
 func (p *Plane) Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool) {
 	n := p.Normal.Normalize()
 	denom := n.Dot(ray.Dir)
 
+	// Si le dénominateur est proche de zéro, le rayon est parallèle au plan
 	if math.Abs(denom) < 1e-6 {
 		return HitRecord{}, false
 	}
@@ -115,6 +116,7 @@ func (p *Plane) Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool) {
 
 	pos := ray.At(t)
 
+	// S'assure que la normale pointe vers le rayon incident
 	if n.Dot(ray.Dir) > 0 {
 		n = n.Mul(-1)
 	}

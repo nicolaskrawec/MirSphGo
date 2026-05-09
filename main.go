@@ -10,40 +10,41 @@ import (
 )
 
 const (
-	Epsilon  = 0.001
-	MaxDepth = 4
+	Epsilon  = 0.001 // Petite valeur pour éviter les erreurs de précision et l'auto-intersection
+	MaxDepth = 4     // Nombre maximum de rebonds pour la réflexion
 )
 
 func main() {
+	// Initialiser le générateur de nombres aléatoires
 	rand.Seed(time.Now().UnixNano())
 
-	// Résolution de rendu interne.
-	// Augmente pour plus de qualité, baisse pour plus de FPS.
+	// Résolution de rendu interne (Viewport)
+	// Plus c'est élevé, plus c'est beau, mais plus c'est lourd pour le CPU.
 	renderW, renderH := 640, 480
 
-	// Taille de la fenêtre.
+	// Taille initiale de la fenêtre
 	windowW, windowH := 640, 480
 
+	// Configuration de la fenêtre Ebitengine
 	ebiten.SetWindowSize(windowW, windowH)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowTitle("Optimized Scalable Ray Tracer")
 
+	// Initialisation de l'objet Game
 	game := &Game{
 		width:  renderW,
 		height: renderH,
-		camPos: V3(0, 1.7, -2),
-		scene:  createScene(),
+		camPos: V3(0, 1.7, -2), // Position de départ de la caméra
+		scene:  createScene(),  // Génération de la scène
 	}
 
+	// Lancement de la boucle de jeu
 	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}
 }
 
-// =====================
-// Scene creation
-// =====================
-
+// randomMaterial génère un matériau avec des propriétés aléatoires.
 func randomMaterial() Material {
 	return Material{
 		Albedo: V3(
@@ -51,13 +52,15 @@ func randomMaterial() Material {
 			rand.Float64()*0.8+0.2,
 			rand.Float64()*0.8+0.2,
 		),
-		Reflectivity: rand.Float64() * 0.35,
+		Reflectivity: 0.2 + rand.Float64()*0.35,
 		Specular:     rand.Float64() * 0.7,
 		Shininess:    16 + rand.Float64()*80,
 	}
 }
 
+// createScene construit l'environnement (sol, sphères, lumières).
 func createScene() Scene {
+	// Matériau pour le sol (damier réfléchissant)
 	floorMaterial := Material{
 		Albedo:       V3(0.8, 0.8, 0.8),
 		Reflectivity: 0.5,
@@ -70,6 +73,7 @@ func createScene() Scene {
 		},
 	}
 
+	// Ajout du sol
 	planes := []Plane{
 		{
 			Point:    V3(0, 0, 0),
@@ -78,27 +82,30 @@ func createScene() Scene {
 		},
 	}
 
+	// Liste des sphères
 	spheres := make([]Sphere, 0, 11)
 
-	centralPosition := V3(0, 1, 4)
+	// Sphère centrale rouge
+	centralPosition := V3(0, 1.5, 4)
 	spheres = append(spheres, Sphere{
 		Center: centralPosition,
 		Radius: 1,
 		Material: Material{
 			Albedo:       V3(0.9, 0.12, 0.08),
-			Reflectivity: 0.22,
-			Specular:     0.8,
-			Shininess:    64,
+			Reflectivity: 0.8, //0.22,
+			Specular:     5,
+			Shininess:    90,
 		},
 	})
 
+	// Génération de petites sphères orbitales
 	for i := 0; i < 6; i++ {
 		radius := rand.Float64()*0.35 + 0.15
 
 		sphere := Sphere{
 			Center: V3(
 				rand.Float64()*6-3,
-				rand.Float64()*3,
+				rand.Float64()*4,
 				rand.Float64()*5+2,
 			),
 			Radius:   radius,
@@ -106,7 +113,7 @@ func createScene() Scene {
 			Orbiting: true,
 			OrbitCenter: V3(
 				centralPosition.X,
-				rand.Float64()*3,
+				rand.Float64()*4,
 				centralPosition.Z,
 			),
 			OrbitRadius: rand.Float64()*2 + 1,
@@ -122,12 +129,14 @@ func createScene() Scene {
 		Spheres: spheres,
 		Planes:  planes,
 
+		// Source de lumière
 		Light: PointLight{
 			Position:  V3(5, 8, 2),
 			Color:     V3(1.0, 0.95, 0.82),
 			Intensity: 1.2,
 		},
 
+		// Lumière ambiante pour déboucher les ombres
 		Ambient: V3(0.08, 0.08, 0.1),
 	}
 }

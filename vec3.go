@@ -5,42 +5,49 @@ import (
 	"math"
 )
 
-// =====================
-// Vec3
-// =====================
-
+// Vec3 représente un vecteur à 3 dimensions (X, Y, Z).
+// Utilisé pour les positions, les directions et les couleurs.
 type Vec3 struct {
 	X, Y, Z float64
 }
 
+// V3 est un helper pour créer un nouveau Vec3.
 func V3(x, y, z float64) Vec3 {
 	return Vec3{x, y, z}
 }
 
+// Add additionne deux vecteurs.
 func (v Vec3) Add(o Vec3) Vec3 {
 	return Vec3{v.X + o.X, v.Y + o.Y, v.Z + o.Z}
 }
 
+// Sub soustrait le vecteur 'o' du vecteur 'v'.
 func (v Vec3) Sub(o Vec3) Vec3 {
 	return Vec3{v.X - o.X, v.Y - o.Y, v.Z - o.Z}
 }
 
+// Mul multiplie un vecteur par un scalaire.
 func (v Vec3) Mul(s float64) Vec3 {
 	return Vec3{v.X * s, v.Y * s, v.Z * s}
 }
 
+// Hadamard effectue un produit de Hadamard (multiplication composante par composante).
+// Très utile pour mélanger des couleurs.
 func (v Vec3) Hadamard(o Vec3) Vec3 {
 	return Vec3{v.X * o.X, v.Y * o.Y, v.Z * o.Z}
 }
 
+// Dot calcule le produit scalaire entre deux vecteurs.
 func (v Vec3) Dot(o Vec3) float64 {
 	return v.X*o.X + v.Y*o.Y + v.Z*o.Z
 }
 
+// Length retourne la longueur (norme) du vecteur.
 func (v Vec3) Length() float64 {
 	return math.Sqrt(v.Dot(v))
 }
 
+// Normalize retourne un vecteur de même direction mais de longueur 1.
 func (v Vec3) Normalize() Vec3 {
 	l := v.Length()
 	if l == 0 {
@@ -49,14 +56,17 @@ func (v Vec3) Normalize() Vec3 {
 	return v.Mul(1 / l)
 }
 
+// Reflect calcule le vecteur de réflexion par rapport à une normale.
 func (v Vec3) Reflect(normal Vec3) Vec3 {
 	return v.Sub(normal.Mul(2 * v.Dot(normal)))
 }
 
+// Lerp effectue une interpolation linéaire entre les vecteurs 'a' et 'b'.
 func Lerp(a, b Vec3, t float64) Vec3 {
 	return a.Mul(1 - t).Add(b.Mul(t))
 }
 
+// Clamp01 restreint une valeur dans l'intervalle [0, 1].
 func Clamp01(x float64) float64 {
 	if x < 0 {
 		return 0
@@ -67,6 +77,7 @@ func Clamp01(x float64) float64 {
 	return x
 }
 
+// ToRGBA convertit un Vec3 (valeurs entre 0 et 1) en color.RGBA.
 func ToRGBA(c Vec3) color.RGBA {
 	return color.RGBA{
 		R: uint8(Clamp01(c.X) * 255),
