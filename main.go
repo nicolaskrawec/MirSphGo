@@ -16,7 +16,7 @@ import (
 
 const (
 	Epsilon  = 0.001
-	MaxDepth = 4
+	MaxDepth = 8
 )
 
 // =====================
@@ -657,7 +657,7 @@ func createScene() Scene {
 		},
 	})
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 6; i++ {
 		radius := rand.Float64()*0.35 + 0.15
 
 		sphere := Sphere{
