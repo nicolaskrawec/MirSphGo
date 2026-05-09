@@ -20,7 +20,7 @@ const (
 )
 
 // =====================
-// Math / Vector
+// Vec3
 // =====================
 
 type Vec3 struct {
@@ -123,7 +123,11 @@ type Material struct {
 	Checker *CheckerPattern
 }
 
-func (m Material) ColorAt(pos Vec3) Vec3 {
+func (m *Material) ColorAt(pos Vec3) Vec3 {
+	if m == nil {
+		return V3(1, 0, 1)
+	}
+
 	if m.Checker == nil {
 		return m.Albedo
 	}
@@ -144,43 +148,51 @@ func (m Material) ColorAt(pos Vec3) Vec3 {
 }
 
 // =====================
-// Geometry
+// Hit
 // =====================
 
 type HitRecord struct {
 	T        float64
 	Position Vec3
 	Normal   Vec3
-	Material Material
+	Material *Material
 }
 
-type Object interface {
-	Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool)
-}
+// =====================
+// Sphere
+// =====================
 
 type Sphere struct {
 	Center   Vec3
 	Radius   float64
 	Material Material
+
+	// Animation orbitale optionnelle
+	Orbiting    bool
+	OrbitCenter Vec3
+	OrbitRadius float64
+	OrbitSpeed  float64
+	OrbitPhase  float64
+	OrbitHeight float64
 }
 
-func (s Sphere) Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool) {
+func (s *Sphere) Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool) {
 	oc := ray.Origin.Sub(s.Center)
 
 	a := ray.Dir.Dot(ray.Dir)
-	b := 2.0 * oc.Dot(ray.Dir)
+	halfB := oc.Dot(ray.Dir)
 	c := oc.Dot(oc) - s.Radius*s.Radius
 
-	discriminant := b*b - 4*a*c
+	discriminant := halfB*halfB - a*c
 	if discriminant < 0 {
 		return HitRecord{}, false
 	}
 
 	sqrtD := math.Sqrt(discriminant)
 
-	t := (-b - sqrtD) / (2 * a)
+	t := (-halfB - sqrtD) / a
 	if t < tMin || t > tMax {
-		t = (-b + sqrtD) / (2 * a)
+		t = (-halfB + sqrtD) / a
 		if t < tMin || t > tMax {
 			return HitRecord{}, false
 		}
@@ -193,9 +205,38 @@ func (s Sphere) Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool) {
 		T:        t,
 		Position: pos,
 		Normal:   normal,
-		Material: s.Material,
+		Material: &s.Material,
 	}, true
 }
+
+// Méthode spécialisée pour les ombres.
+// Elle évite de construire un HitRecord complet.
+func (s *Sphere) IntersectAny(ray Ray, tMin, tMax float64) bool {
+	oc := ray.Origin.Sub(s.Center)
+
+	a := ray.Dir.Dot(ray.Dir)
+	halfB := oc.Dot(ray.Dir)
+	c := oc.Dot(oc) - s.Radius*s.Radius
+
+	discriminant := halfB*halfB - a*c
+	if discriminant < 0 {
+		return false
+	}
+
+	sqrtD := math.Sqrt(discriminant)
+
+	t := (-halfB - sqrtD) / a
+	if t >= tMin && t <= tMax {
+		return true
+	}
+
+	t = (-halfB + sqrtD) / a
+	return t >= tMin && t <= tMax
+}
+
+// =====================
+// Plane
+// =====================
 
 type Plane struct {
 	Point    Vec3
@@ -203,7 +244,7 @@ type Plane struct {
 	Material Material
 }
 
-func (p Plane) Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool) {
+func (p *Plane) Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool) {
 	n := p.Normal.Normalize()
 	denom := n.Dot(ray.Dir)
 
@@ -212,14 +253,12 @@ func (p Plane) Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool) {
 	}
 
 	t := p.Point.Sub(ray.Origin).Dot(n) / denom
-
 	if t < tMin || t > tMax {
 		return HitRecord{}, false
 	}
 
 	pos := ray.At(t)
 
-	// On s'assure que la normale regarde contre le rayon.
 	if n.Dot(ray.Dir) > 0 {
 		n = n.Mul(-1)
 	}
@@ -228,12 +267,28 @@ func (p Plane) Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool) {
 		T:        t,
 		Position: pos,
 		Normal:   n,
-		Material: p.Material,
+		Material: &p.Material,
 	}, true
 }
 
 // =====================
-// Scene / Light
+// Animation
+// =====================
+
+func (s *Sphere) UpdateAnimation(t float64) {
+	if !s.Orbiting {
+		return
+	}
+
+	angle := s.OrbitPhase + t*s.OrbitSpeed
+
+	s.Center.X = s.OrbitCenter.X + math.Cos(angle)*s.OrbitRadius
+	s.Center.Z = s.OrbitCenter.Z + math.Sin(angle)*s.OrbitRadius
+	s.Center.Y = s.OrbitCenter.Y + s.OrbitHeight
+}
+
+// =====================
+// Scene
 // =====================
 
 type PointLight struct {
@@ -243,18 +298,28 @@ type PointLight struct {
 }
 
 type Scene struct {
-	Objects []Object
+	Spheres []Sphere
+	Planes  []Plane
+
 	Light   PointLight
 	Ambient Vec3
 }
 
-func (s Scene) Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool) {
+func (s *Scene) Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool) {
 	closest := tMax
 	var bestHit HitRecord
 	hitAnything := false
 
-	for _, obj := range s.Objects {
-		if hit, ok := obj.Intersect(ray, tMin, closest); ok {
+	for i := range s.Spheres {
+		if hit, ok := s.Spheres[i].Intersect(ray, tMin, closest); ok {
+			closest = hit.T
+			bestHit = hit
+			hitAnything = true
+		}
+	}
+
+	for i := range s.Planes {
+		if hit, ok := s.Planes[i].Intersect(ray, tMin, closest); ok {
 			closest = hit.T
 			bestHit = hit
 			hitAnything = true
@@ -264,7 +329,7 @@ func (s Scene) Intersect(ray Ray, tMin, tMax float64) (HitRecord, bool) {
 	return bestHit, hitAnything
 }
 
-func (s Scene) IsInShadow(point, normal Vec3) bool {
+func (s *Scene) IsInShadow(point, normal Vec3) bool {
 	toLight := s.Light.Position.Sub(point)
 	lightDistance := toLight.Length()
 	lightDir := toLight.Normalize()
@@ -274,8 +339,16 @@ func (s Scene) IsInShadow(point, normal Vec3) bool {
 		Dir:    lightDir,
 	}
 
-	_, hit := s.Intersect(shadowRay, Epsilon, lightDistance-Epsilon)
-	return hit
+	// Optimisation volontaire :
+	// le sol ne bloque pas la lumière dans ce modèle simple.
+	// On ne teste donc que les sphères.
+	for i := range s.Spheres {
+		if s.Spheres[i].IntersectAny(shadowRay, Epsilon, lightDistance-Epsilon) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // =====================
@@ -306,6 +379,7 @@ func (g *Game) Update() error {
 
 	const moveSpeed = 0.1
 	const mouseSens = 0.005
+	const invertMouseY = true
 
 	mx, my := ebiten.CursorPosition()
 
@@ -314,7 +388,12 @@ func (g *Game) Update() error {
 		dy := my - g.prevMouseY
 
 		g.camYaw += float64(dx) * mouseSens
-		g.camPitch += float64(dy) * mouseSens
+
+		if invertMouseY {
+			g.camPitch += float64(dy) * mouseSens
+		} else {
+			g.camPitch -= float64(dy) * mouseSens
+		}
 
 		if g.camPitch > 1.5 {
 			g.camPitch = 1.5
@@ -344,6 +423,16 @@ func (g *Game) Update() error {
 		g.camPos = g.camPos.Sub(right.Mul(moveSpeed))
 	}
 
+	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyQ) {
+		g.camPos = g.camPos.Sub(right.Mul(moveSpeed))
+	}
+
+	t := float64(time.Now().UnixNano()) / 1e9
+
+	for i := range g.scene.Spheres {
+		g.scene.Spheres[i].UpdateAnimation(t)
+	}
+
 	return nil
 }
 
@@ -356,14 +445,18 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	screen.WritePixels(g.pixels)
 
+	objectCount := len(g.scene.Spheres) + len(g.scene.Planes)
+
 	ebitenutil.DebugPrint(
 		screen,
 		fmt.Sprintf(
-			"FPS: %.2f\nRender: %dx%d\nObjects: %d",
+			"FPS: %.2f\nRender: %dx%d\nSpheres: %d\nPlanes: %d\nObjects: %d",
 			ebiten.ActualFPS(),
 			g.width,
 			g.height,
-			len(g.scene.Objects),
+			len(g.scene.Spheres),
+			len(g.scene.Planes),
+			objectCount,
 		),
 	)
 }
@@ -417,17 +510,19 @@ func (g *Game) cameraRay(x, y int) Ray {
 	cosPitch := math.Cos(g.camPitch)
 	sinPitch := math.Sin(g.camPitch)
 
-	// Direction locale avant rotation.
-	local := V3(px, py, 1)
+	// Direction locale : caméra qui regarde vers +Z.
+	localX := px
+	localY := py
+	localZ := 1.0
 
-	// Rotation pitch autour de X.
-	y1 := local.Y*cosPitch - local.Z*sinPitch
-	z1 := local.Y*sinPitch + local.Z*cosPitch
+	// Pitch autour de X.
+	y1 := localY*cosPitch - localZ*sinPitch
+	z1 := localY*sinPitch + localZ*cosPitch
 
-	// Rotation yaw autour de Y.
-	dirX := local.X*cosYaw + z1*sinYaw
+	// Yaw autour de Y.
+	dirX := localX*cosYaw + z1*sinYaw
 	dirY := y1
-	dirZ := -local.X*sinYaw + z1*cosYaw
+	dirZ := -localX*sinYaw + z1*cosYaw
 
 	return Ray{
 		Origin: g.camPos,
@@ -448,9 +543,9 @@ func (g *Game) trace(ray Ray, depth int) Vec3 {
 	material := hit.Material
 	baseColor := material.ColorAt(hit.Position)
 
-	light := g.scene.Light
 	ambient := baseColor.Hadamard(g.scene.Ambient)
 
+	light := g.scene.Light
 	toLight := light.Position.Sub(hit.Position)
 	lightDir := toLight.Normalize()
 
@@ -481,7 +576,7 @@ func (g *Game) trace(ray Ray, depth int) Vec3 {
 
 	localColor := ambient.Add(diffuse).Add(specular)
 
-	if material.Reflectivity <= 0 {
+	if material.Reflectivity <= 0.01 || depth >= MaxDepth {
 		return localColor
 	}
 
@@ -491,10 +586,10 @@ func (g *Game) trace(ray Ray, depth int) Vec3 {
 		Dir:    reflectDir,
 	}
 
-	reflected := g.trace(reflectRay, depth+1)
+	reflectedColor := g.trace(reflectRay, depth+1)
 
 	return localColor.Mul(1 - material.Reflectivity).
-		Add(reflected.Mul(material.Reflectivity))
+		Add(reflectedColor.Mul(material.Reflectivity))
 }
 
 func skyColor(ray Ray) Vec3 {
@@ -521,31 +616,45 @@ func randomMaterial() Material {
 			rand.Float64()*0.8+0.2,
 			rand.Float64()*0.8+0.2,
 		),
-		Reflectivity: rand.Float64() * 0.45,
-		Specular:     rand.Float64() * 0.8,
-		Shininess:    16 + rand.Float64()*96,
+		Reflectivity: rand.Float64() * 0.35,
+		Specular:     rand.Float64() * 0.7,
+		Shininess:    16 + rand.Float64()*80,
 	}
 }
 
 func createScene() Scene {
-	objects := make([]Object, 0)
-
 	floorMaterial := Material{
 		Albedo:       V3(0.8, 0.8, 0.8),
-		Reflectivity: 0.05,
-		Specular:     0.1,
+		Reflectivity: 0.5, // * 0.03,
+		Specular:     0.05,
 		Shininess:    16,
 		Checker: &CheckerPattern{
 			ColorA: V3(0.85, 0.85, 0.85),
-			ColorB: V3(0.12, 0.12, 0.12),
+			ColorB: V3(0.15, 0.15, 0.15),
 			Scale:  1,
 		},
 	}
 
-	objects = append(objects, Plane{
-		Point:    V3(0, 0, 0),
-		Normal:   V3(0, 1, 0),
-		Material: floorMaterial,
+	planes := []Plane{
+		{
+			Point:    V3(0, 0, 0),
+			Normal:   V3(0, 1, 0),
+			Material: floorMaterial,
+		},
+	}
+
+	spheres := make([]Sphere, 0, 11)
+
+	centralPosition := V3(0, 1, 4)
+	spheres = append(spheres, Sphere{
+		Center: centralPosition,
+		Radius: 1,
+		Material: Material{
+			Albedo:       V3(0.9, 0.12, 0.08),
+			Reflectivity: 0.22,
+			Specular:     0.8,
+			Shininess:    64,
+		},
 	})
 
 	for i := 0; i < 10; i++ {
@@ -554,35 +663,36 @@ func createScene() Scene {
 		sphere := Sphere{
 			Center: V3(
 				rand.Float64()*6-3,
-				radius,
+				rand.Float64()*3,
 				rand.Float64()*5+2,
 			),
 			Radius:   radius,
 			Material: randomMaterial(),
+			Orbiting: true,
+			OrbitCenter: V3(
+				centralPosition.X,
+				rand.Float64()*3,
+				centralPosition.Z,
+			),
+			OrbitRadius: rand.Float64()*2 + 1,
+			OrbitSpeed:  rand.Float64()*0.5 + 0.8,
+			OrbitPhase:  float64(i) * 2 * math.Pi / 8,
+			OrbitHeight: 0.0,
 		}
 
-		objects = append(objects, sphere)
+		spheres = append(spheres, sphere)
 	}
 
-	// Une grosse sphère plus visible.
-	objects = append(objects, Sphere{
-		Center: V3(0, 1, 4),
-		Radius: 1,
-		Material: Material{
-			Albedo:       V3(0.9, 0.15, 0.1),
-			Reflectivity: 0.25,
-			Specular:     0.8,
-			Shininess:    64,
-		},
-	})
-
 	return Scene{
-		Objects: objects,
+		Spheres: spheres,
+		Planes:  planes,
+
 		Light: PointLight{
 			Position:  V3(5, 8, 2),
 			Color:     V3(1.0, 0.95, 0.82),
 			Intensity: 1.2,
 		},
+
 		Ambient: V3(0.08, 0.08, 0.1),
 	}
 }
@@ -594,16 +704,16 @@ func createScene() Scene {
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
-	// Résolution réelle de rendu.
-	// Tu peux la baisser pour accélérer le raytracer.
-	renderW, renderH := 512, 384
+	// Résolution de rendu interne.
+	// Augmente pour plus de qualité, baisse pour plus de FPS.
+	renderW, renderH := 640, 480
 
-	// Taille de fenêtre.
-	// Ebiten va scaler la résolution logique vers cette taille.
-	windowW, windowH := 1024, 768
+	// Taille de la fenêtre.
+	windowW, windowH := 640, 480
 
 	ebiten.SetWindowSize(windowW, windowH)
-	ebiten.SetWindowTitle("Scalable Ray Tracer")
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+	ebiten.SetWindowTitle("Optimized Scalable Ray Tracer")
 
 	game := &Game{
 		width:  renderW,
