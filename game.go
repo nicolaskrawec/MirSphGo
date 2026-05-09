@@ -36,6 +36,13 @@ func (g *Game) Update() error {
 		return ebiten.Termination
 	}
 
+	// Recentrer la caméra si la touche R est pressée
+	if ebiten.IsKeyPressed(ebiten.KeyR) {
+		g.camPos = V3(0, 1.7, -2)
+		g.camYaw = 0
+		g.camPitch = 0
+	}
+
 	const moveSpeed = 0.1
 	const mouseSens = 0.005
 	const invertMouseY = true
