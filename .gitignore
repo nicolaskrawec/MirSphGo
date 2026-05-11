@@ -31,3 +31,5 @@ Thumbs.db
 
 # Fichiers temporaires
 *.log
+.gocache/
+.gomodcache/

@@ -20,20 +20,26 @@ func main() {
 
 	// Résolution de rendu interne (Viewport)
 	// Plus c'est élevé, plus c'est beau, mais plus c'est lourd pour le CPU.
-	renderW, renderH := 640, 480
+	renderW, renderH := 1024, 768
 
 	// Taille initiale de la fenêtre
-	windowW, windowH := 640, 480
+	windowW, windowH := 1024, 768
 
 	// Configuration de la fenêtre Ebitengine
 	ebiten.SetWindowSize(windowW, windowH)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowTitle("Optimized Scalable Ray Tracer")
 
+	shader, err := ebiten.NewShader([]byte(rayShaderSource))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Initialisation de l'objet Game
 	game := &Game{
 		width:  renderW,
 		height: renderH,
+		shader: shader,
 		camPos: V3(0, 1.7, -2), // Position de départ de la caméra
 		scene:  createScene(),  // Génération de la scène
 	}
@@ -59,7 +65,7 @@ func randomMaterial() Material {
 			rand.Float64()*0.8+0.2,
 			rand.Float64()*0.8+0.2,
 		),
-		Reflectivity:    0.2 + rand.Float64()*0.35,
+		Reflectivity:    0.0 + rand.Float64()*0.35,
 		Specular:        rand.Float64() * 0.7,
 		Shininess:       16 + rand.Float64()*80,
 		Transparency:    transparency,
@@ -76,7 +82,7 @@ func createScene() Scene {
 		Specular:     0.05,
 		Shininess:    16,
 		Checker: &CheckerPattern{
-			ColorA: V3(0.85, 0.85, 0.85),
+			ColorA: V3(0.985, 0.985, 0.985),
 			ColorB: V3(0.15, 0.15, 0.15),
 			Scale:  1,
 		},
@@ -92,7 +98,7 @@ func createScene() Scene {
 	}
 
 	// Liste des sphères
-	spheres := make([]Sphere, 0, 11)
+	spheres := make([]Sphere, 0, 32)
 
 	// Sphère centrale
 	centralPosition := V3(0, 1.5, 4)
@@ -104,7 +110,7 @@ func createScene() Scene {
 			Reflectivity:    0.05,               //0.22,
 			Specular:        5,
 			Shininess:       90,
-			RefractionIndex: 1.05,
+			RefractionIndex: 1.2,
 			Transparency:    0.8,
 		},
 	})
@@ -123,7 +129,7 @@ func createScene() Scene {
 	// })
 
 	// Génération de petites sphères orbitales
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 31; i++ {
 		radius := rand.Float64()*0.35 + 0.15
 
 		sphere := Sphere{
@@ -161,6 +167,6 @@ func createScene() Scene {
 		},
 
 		// Lumière ambiante pour déboucher les ombres
-		Ambient: V3(0.08, 0.08, 0.1),
+		Ambient: V3(0.08, 0.08, 0.01),
 	}
 }
